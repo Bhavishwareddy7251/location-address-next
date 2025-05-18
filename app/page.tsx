@@ -87,9 +87,8 @@ export default function Home() {
           fontSize: `1.75rem`,
           fontWeight: 600,
           marginBottom: `1.5rem`,
-          background: `linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%)`,
           WebkitBackgroundClip: `text`,
-          WebkitTextFillColor: `transparent`,
+          color: `black`,
           display: `inline-block`
         }}>
           Interactive Location Finder
@@ -356,7 +355,7 @@ export default function Home() {
                     {confirmedLocation.address}
                   </p>
 
-                  <div style={{ textAlign: 'center' }}>
+                  <div className='hello' style={{ textAlign: 'center' }}>
                     <a
                       href={confirmedLocation.mapLink}
                       target="_blank"
@@ -368,7 +367,7 @@ export default function Home() {
                         gap: '0.5rem',
                         padding: '0.75rem 1.5rem',
                         borderRadius: 'var(--radius)',
-                        background: 'var(--success)',
+                        background: 'black !important',
                         color: 'white',
                         fontWeight: 500,
                         textDecoration: 'none',
@@ -378,10 +377,6 @@ export default function Home() {
                       onMouseOver={(e) => e.currentTarget.style.background = '#238b7d'}
                       onMouseOut={(e) => e.currentTarget.style.background = 'var(--success)'}
                     >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-                        <circle cx="12" cy="10" r="3"></circle>
-                      </svg>
                       Open in Google Maps
                     </a>
                   </div>
