@@ -15,14 +15,14 @@ interface PickableMapProps {
 }
 
 export default function PickableMap({
-  initialCoordinates = { lat: 40.7128, lng: -74.006 }, // Default to NYC
+  initialCoordinates = { lat: 17.3850, lng: 78.4867}, // Default to HYD
   onCoordinatesChange,
   height = '400px',
   width = '100%',
   zoom = 13,
 }: PickableMapProps) {
   const mapRef = useRef<HTMLDivElement>(null);
-    const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
+  const [mapInstance, setMapInstance] = useState<google.maps.Map | null>(null);
   const [marker, setMarker] = useState<google.maps.Marker | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
