@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import axios from 'axios';
+import { useState, useCallback } from 'react';
+import PickableMap from '../components/PickableMap';
+import useReverseGeocode from '../hooks/useReverseGeocode';
 
 interface Coordinates {
   lat: number;
@@ -9,61 +10,59 @@ interface Coordinates {
 }
 
 export default function Home() {
-  const [coords, setCoords] = useState<Coordinates | null>(null);
-  const [address, setAddress] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
+  const { address, error, loading, reverseGeocode } = useReverseGeocode();
+  const [geoLocationError, setGeoLocationError] = useState<string | null>(null);
+  const [confirmedLocation, setConfirmedLocation] = useState<{
+    coordinates: Coordinates;
+    address: string;
+    mapLink: string;
+  } | null>(null);
 
-  useEffect(() => {
-    if (!('geolocation' in navigator)) {
-      setError('Geolocation is not supported by your browser.');
+  const handleCoordinatesChange = useCallback((coords: Coordinates) => {
+    setCoordinates(coords);
+    reverseGeocode(coords);
+    // Reset confirmed location when coordinates change
+    setConfirmedLocation(null);
+  }, [reverseGeocode]);
+
+  const handleUseMyLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setGeoLocationError('Geolocation is not supported by your browser');
       return;
     }
 
-    setLoading(true);
-
     navigator.geolocation.getCurrentPosition(
-      async ({ coords: { latitude, longitude } }) => {
-        setCoords({ lat: latitude, lng: longitude });
-
-        try {
-          const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_KEY;
-          if (!apiKey) {
-            setError('Google Maps API key is missing');
-            setLoading(false);
-            return;
-          }
-
-          const response = await axios.get(
-            'https://maps.googleapis.com/maps/api/geocode/json',
-            {
-              params: {
-                latlng: `${latitude},${longitude}`,
-                key: apiKey,
-              },
-            }
-          );
-
-          if (response.data.status === 'OK') {
-            const formattedAddress =
-              response.data.results?.[0]?.formatted_address || 'Address not found';
-            setAddress(formattedAddress);
-          } else {
-            setError('Failed to get address from Google Maps API');
-          }
-        } catch (e) {
-          setError(e instanceof Error ? e.message : 'Error fetching address');
-        } finally {
-          setLoading(false);
-        }
+      (position) => {
+        const coords = {
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+        };
+        setCoordinates(coords);
+        reverseGeocode(coords);
+        setGeoLocationError(null);
+        // Reset confirmed location when using current location
+        setConfirmedLocation(null);
       },
-      (geoError) => {
-        setError(geoError.message);
-        setLoading(false);
-      },
-      { timeout: 10000 }
+      (err) => {
+        setGeoLocationError(`Error getting location: ${err.message}`);
+      }
     );
-  }, []);
+  }, [reverseGeocode]);
+
+  const handleConfirmLocation = useCallback(() => {
+    if (coordinates) {
+      const mapLink = `https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`;
+      setConfirmedLocation({
+        coordinates,
+        address: address || 'Address not available',
+        mapLink
+      });
+      console.log('Location confirmed:', coordinates, address);
+    } else {
+      console.log('Cannot confirm location: coordinates not available');
+    }
+  }, [coordinates, address]);
 
   return (
     <main
@@ -75,7 +74,7 @@ export default function Home() {
       }}
     >
       <div
-        className="max-w-lg w-full text-center space-y-6"
+        className="max-w-4xl w-full text-center space-y-6"
         style={{
           background: `var(--card-bg)`,
           borderRadius: `var(--radius-lg)`,
@@ -93,138 +92,304 @@ export default function Home() {
           WebkitTextFillColor: `transparent`,
           display: `inline-block`
         }}>
-          Your Location & Address
+          Interactive Location Finder
         </h1>
 
-        {loading && (
-          <div className="flex justify-center items-center py-4">
-            <div style={{
-              width: `2rem`,
-              height: `2rem`,
-              border: `3px solid var(--secondary)`,
-              borderTop: `3px solid var(--primary)`,
-              borderRadius: `50%`,
-              animation: `spin 1s linear infinite`
-            }} />
+        <p style={{ marginBottom: '1rem' }}>
+          Click on the map or drag the marker to find an address
+        </p>
+
+        <button
+          onClick={handleUseMyLocation}
+          disabled={loading}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            padding: '0.75rem 1.5rem',
+            borderRadius: 'var(--radius)',
+            background: 'var(--secondary)',
+            border: '1px solid var(--border)',
+            color: 'var(--foreground)',
+            fontWeight: 500,
+            cursor: 'pointer',
+            transition: 'var(--transition)',
+            marginBottom: '1.5rem'
+          }}
+          onMouseOver={(e) => e.currentTarget.style.background = 'var(--secondary-hover)'}
+          onMouseOut={(e) => e.currentTarget.style.background = 'var(--secondary)'}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <circle cx="12" cy="12" r="1"></circle>
+          </svg>
+          Use My Current Location
+        </button>
+
+        {geoLocationError && (
+          <div style={{
+            padding: '0.75rem',
+            borderRadius: 'var(--radius)',
+            background: 'rgba(230, 57, 70, 0.1)',
+            border: '1px solid var(--error)',
+            color: 'var(--error)',
+            marginBottom: '1rem'
+          }}>
+            <p>{geoLocationError}</p>
+          </div>
+        )}
+
+        <div style={{ height: '400px', marginBottom: '1.5rem' }}>
+          <PickableMap
+            initialCoordinates={coordinates || { lat: 40.7128, lng: -74.006 }}
+            onCoordinatesChange={handleCoordinatesChange}
+            height="100%"
+          />
+        </div>
+
+        {coordinates && !confirmedLocation && (
+          <div style={{
+            marginBottom: '1.5rem',
+            textAlign: 'center',
+            animation: 'fadeIn 0.5s ease-in-out'
+          }}>
             <style jsx>{`
-              @keyframes spin {
-                0% { transform: rotate(0deg); }
-                100% { transform: rotate(360deg); }
+              @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(10px); }
+                to { opacity: 1; transform: translateY(0); }
+              }
+              @keyframes pulse {
+                0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.7); }
+                70% { box-shadow: 0 0 0 10px rgba(37, 99, 235, 0); }
+                100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+              }
+              button {
+                animation: pulse 2s infinite;
               }
             `}</style>
-            <p style={{ marginLeft: `1rem` }}>Fetching location and address...</p>
+            <button
+              onClick={handleConfirmLocation}
+              disabled={loading}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '0.75rem',
+                padding: '1rem 2rem',
+                borderRadius: 'var(--radius)',
+                background: '#2563eb', /* Bright blue background */
+                color: 'white',
+                fontWeight: 600,
+                border: 'none',
+                cursor: 'pointer',
+                transition: 'var(--transition)',
+                boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08)',
+                fontSize: '1.1rem',
+                letterSpacing: '0.01em'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.background = '#1d4ed8'} /* Darker blue on hover */
+              onMouseOut={(e) => e.currentTarget.style.background = '#2563eb'} /* Back to original blue */
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 13l4 4L19 7"></path>
+              </svg>
+              <span style={{ fontWeight: 600 }}>CONFIRM LOCATION</span>
+            </button>
           </div>
         )}
 
-        {error && (
-          <div style={{
-            padding: `1rem`,
-            borderRadius: `var(--radius)`,
-            background: `rgba(230, 57, 70, 0.1)`,
-            border: `1px solid var(--error)`,
-            color: `var(--error)`
+        <div style={{
+          padding: '1.5rem',
+          borderRadius: 'var(--radius)',
+          background: 'var(--secondary)',
+          textAlign: 'left'
+        }}>
+          <h2 style={{
+            fontSize: '1.25rem',
+            fontWeight: 600,
+            marginBottom: '1rem',
+            color: 'var(--foreground)'
           }}>
-            <p>{error}</p>
-          </div>
-        )}
+            Selected Location
+          </h2>
 
-        {coords && (
-          <div style={{
-            padding: `1rem`,
-            borderRadius: `var(--radius)`,
-            background: `var(--secondary)`,
-            display: `flex`,
-            flexDirection: `column`,
-            gap: `0.5rem`
-          }}>
-            <h2 style={{ fontSize: `1rem`, fontWeight: 600 }}>Coordinates</h2>
+          {loading && (
+            <div className="flex items-center py-2">
+              <div style={{
+                width: '1.5rem',
+                height: '1.5rem',
+                border: '3px solid var(--card-bg)',
+                borderTop: '3px solid var(--primary)',
+                borderRadius: '50%',
+                animation: 'spin 1s linear infinite'
+              }} />
+              <style jsx>{`
+                @keyframes spin {
+                  0% { transform: rotate(0deg); }
+                  100% { transform: rotate(360deg); }
+                }
+              `}</style>
+              <p style={{ marginLeft: '0.75rem' }}>Loading address...</p>
+            </div>
+          )}
+
+          {error && (
             <div style={{
-              display: `flex`,
-              justifyContent: `center`,
-              gap: `1rem`,
-              fontFamily: `var(--font-geist-mono)`,
-              fontSize: `0.9rem`
+              padding: '0.75rem',
+              borderRadius: 'var(--radius)',
+              background: 'rgba(230, 57, 70, 0.1)',
+              border: '1px solid var(--error)',
+              color: 'var(--error)'
+            }}>
+              <p>{error}</p>
+            </div>
+          )}
+
+          {coordinates && (
+            <div style={{
+              display: 'flex',
+              gap: '1rem',
+              fontFamily: 'var(--font-geist-mono)',
+              fontSize: '0.9rem',
+              marginBottom: '1rem'
             }}>
               <div style={{
-                padding: `0.5rem 1rem`,
-                background: `var(--card-bg)`,
-                borderRadius: `var(--radius)`,
-                boxShadow: `var(--shadow)`,
+                padding: '0.5rem 1rem',
+                background: 'var(--card-bg)',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--shadow)',
                 flex: 1
               }}>
-                <span style={{ opacity: 0.7 }}>Lat:</span> {coords.lat.toFixed(5)}
+                <span style={{ opacity: 0.7 }}>Lat:</span> {coordinates.lat.toFixed(6)}
               </div>
               <div style={{
-                padding: `0.5rem 1rem`,
-                background: `var(--card-bg)`,
-                borderRadius: `var(--radius)`,
-                boxShadow: `var(--shadow)`,
+                padding: '0.5rem 1rem',
+                background: 'var(--card-bg)',
+                borderRadius: 'var(--radius)',
+                boxShadow: 'var(--shadow)',
                 flex: 1
               }}>
-                <span style={{ opacity: 0.7 }}>Lng:</span> {coords.lng.toFixed(5)}
+                <span style={{ opacity: 0.7 }}>Lng:</span> {coordinates.lng.toFixed(6)}
               </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {address && (
-          <div style={{
-            display: `flex`,
-            flexDirection: `column`,
-            gap: `0.5rem`
-          }}>
-            <h2 style={{ fontSize: `1rem`, fontWeight: 600 }}>Address</h2>
-            <textarea
-              readOnly
-              style={{
-                width: `100%`,
-                padding: `1rem`,
-                borderRadius: `var(--radius)`,
-                border: `1px solid var(--border)`,
-                background: `var(--secondary)`,
-                fontFamily: `inherit`,
-                resize: `none`,
-                textAlign: `left`,
-                lineHeight: 1.5,
-                color: `var(--foreground)`,
-                fontSize: `0.95rem`
-              }}
-              rows={3}
-              value={address}
-            />
-          </div>
-        )}
+          {address && (
+            <div>
+              <h3 style={{
+                fontSize: '1rem',
+                fontWeight: 600,
+                marginBottom: '0.5rem',
+                color: 'var(--foreground)'
+              }}>
+                Address
+              </h3>
+              <p style={{
+                padding: '1rem',
+                background: 'var(--card-bg)',
+                borderRadius: 'var(--radius)',
+                border: '1px solid var(--border)',
+                lineHeight: 1.5
+              }}>
+                {address}
+              </p>
+            </div>
+          )}
 
-        {coords && (
-          <a
-            href={`https://www.google.com/maps?q=${coords.lat},${coords.lng}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: `inline-flex`,
-              alignItems: `center`,
-              justifyContent: `center`,
-              gap: `0.5rem`,
-              padding: `0.75rem 1.5rem`,
-              borderRadius: `var(--radius)`,
-              background: `var(--primary)`,
-              color: `white`,
-              fontWeight: 500,
-              textDecoration: `none`,
-              transition: `var(--transition)`,
-              boxShadow: `var(--shadow)`,
-              marginTop: `1rem`
-            }}
-            onMouseOver={(e) => e.currentTarget.style.background = `var(--primary-hover)`}
-            onMouseOut={(e) => e.currentTarget.style.background = `var(--primary)`}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
-              <circle cx="12" cy="10" r="3"></circle>
-            </svg>
-            Open in Google Maps
-          </a>
-        )}
+          {confirmedLocation && (
+            <div style={{
+              marginTop: '2rem',
+              padding: '1.5rem',
+              borderRadius: 'var(--radius)',
+              background: 'rgba(42, 157, 143, 0.1)',
+              border: '1px solid var(--success)'
+            }}>
+              <h3 style={{
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                marginBottom: '1rem',
+                color: 'var(--success)'
+              }}>
+                Location Confirmed
+              </h3>
+
+              <div style={{
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1rem'
+              }}>
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  fontFamily: 'var(--font-geist-mono)',
+                  fontSize: '0.9rem'
+                }}>
+                  <div style={{
+                    padding: '0.5rem 1rem',
+                    background: 'var(--card-bg)',
+                    borderRadius: 'var(--radius)',
+                    boxShadow: 'var(--shadow)',
+                    flex: 1
+                  }}>
+                    <span style={{ opacity: 0.7 }}>Lat:</span> {confirmedLocation.coordinates.lat.toFixed(6)}
+                  </div>
+                  <div style={{
+                    padding: '0.5rem 1rem',
+                    background: 'var(--card-bg)',
+                    borderRadius: 'var(--radius)',
+                    boxShadow: 'var(--shadow)',
+                    flex: 1
+                  }}>
+                    <span style={{ opacity: 0.7 }}>Lng:</span> {confirmedLocation.coordinates.lng.toFixed(6)}
+                  </div>
+                </div>
+
+                <div>
+                  <p style={{
+                    padding: '1rem',
+                    background: 'var(--card-bg)',
+                    borderRadius: 'var(--radius)',
+                    border: '1px solid var(--border)',
+                    lineHeight: 1.5,
+                    marginBottom: '1rem'
+                  }}>
+                    {confirmedLocation.address}
+                  </p>
+
+                  <div style={{ textAlign: 'center' }}>
+                    <a
+                      href={confirmedLocation.mapLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '0.5rem',
+                        padding: '0.75rem 1.5rem',
+                        borderRadius: 'var(--radius)',
+                        background: 'var(--success)',
+                        color: 'white',
+                        fontWeight: 500,
+                        textDecoration: 'none',
+                        transition: 'var(--transition)',
+                        boxShadow: 'var(--shadow)'
+                      }}
+                      onMouseOver={(e) => e.currentTarget.style.background = '#238b7d'}
+                      onMouseOut={(e) => e.currentTarget.style.background = 'var(--success)'}
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
+                        <circle cx="12" cy="10" r="3"></circle>
+                      </svg>
+                      Open in Google Maps
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </main>
   );
