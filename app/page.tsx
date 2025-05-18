@@ -3,7 +3,9 @@
 import { useState, useCallback } from 'react';
 import PickableMap from '../components/PickableMap';
 import useReverseGeocode from '../hooks/useReverseGeocode';
-import "../app/page.module.css"
+import "../app/page.module.css";
+import { isWithinAllowedDistance } from '../utils/distance';
+import allowedLocations, { MAX_ALLOWED_DISTANCE } from '../data/allowedLocations';
 
 interface Coordinates {
   lat: number;
@@ -14,6 +16,7 @@ export default function Home() {
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
   const { address, error, loading, reverseGeocode } = useReverseGeocode();
   const [geoLocationError, setGeoLocationError] = useState<string | null>(null);
+  const [locationAvailable, setLocationAvailable] = useState<boolean>(true);
   const [confirmedLocation, setConfirmedLocation] = useState<{
     coordinates: Coordinates;
     address: string;
@@ -24,6 +27,7 @@ export default function Home() {
     setCoordinates(coords);
     reverseGeocode(coords);
     setConfirmedLocation(null);
+    setLocationAvailable(true); // Reset location availability when coordinates change
   }, [reverseGeocode]);
 
   const handleUseMyLocation = useCallback(() => {
@@ -42,6 +46,7 @@ export default function Home() {
         reverseGeocode(coords);
         setGeoLocationError(null);
         setConfirmedLocation(null);
+        setLocationAvailable(true); // Reset location availability when using current location
       },
       (err) => {
         setGeoLocationError(`Error getting location: ${err.message}`);
@@ -51,12 +56,27 @@ export default function Home() {
 
   const handleConfirmLocation = useCallback(() => {
     if (coordinates) {
-      const mapLink = `https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`;
-      setConfirmedLocation({
+      // Check if the user's location is within the allowed distance
+      const isAvailable = isWithinAllowedDistance(
         coordinates,
-        address: address || 'Address not available',
-        mapLink
-      });
+        allowedLocations,
+        MAX_ALLOWED_DISTANCE
+      );
+
+      setLocationAvailable(isAvailable);
+
+      // If the location is available, set the confirmed location
+      if (isAvailable) {
+        const mapLink = `https://www.google.com/maps?q=${coordinates.lat},${coordinates.lng}`;
+        setConfirmedLocation({
+          coordinates,
+          address: address || 'Address not available',
+          mapLink
+        });
+      } else {
+        // If the location is not available, clear the confirmed location
+        setConfirmedLocation(null);
+      }
     }
   }, [coordinates, address]);
 
@@ -74,10 +94,6 @@ export default function Home() {
           disabled={loading}
           className="use-location-btn"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="10"></circle>
-            <circle cx="12" cy="12" r="1"></circle>
-          </svg>
           Use My Current Location
         </button>
 
@@ -89,7 +105,7 @@ export default function Home() {
 
         <div className="map-wrapper">
           <PickableMap
-            initialCoordinates={coordinates || { lat: 40.7128, lng: -74.006 }}
+            initialCoordinates={coordinates || undefined}
             onCoordinatesChange={handleCoordinatesChange}
             height="100%"
           />
@@ -102,11 +118,15 @@ export default function Home() {
               disabled={loading}
               className="confirm-btn"
             >
-              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M5 13l4 4L19 7"></path>
-              </svg>
               <span>CONFIRM LOCATION</span>
             </button>
+          </div>
+        )}
+
+        {!locationAvailable && (
+          <div className="error-box" style={{ marginBottom: '1.5rem' }}>
+            <p>Sorry, we are not available at your location.</p>
+            <p>Please select a location within {MAX_ALLOWED_DISTANCE} km of our service areas.</p>
           </div>
         )}
 

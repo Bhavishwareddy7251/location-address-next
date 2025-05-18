@@ -15,7 +15,7 @@ interface PickableMapProps {
 }
 
 export default function PickableMap({
-  initialCoordinates = { lat: 17.3850, lng: 78.4867}, // Default to HYD
+  initialCoordinates = { lat: 17.3850, lng: 78.4867},
   onCoordinatesChange,
   height = '400px',
   width = '100%',
